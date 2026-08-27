@@ -46,3 +46,24 @@
 | XLU      |       41772 | 1998-12-22 00:00:00-05:00 | 2026-08-27 00:00:00-04:00 |      0.00 | yfinance |
 | XLV      |       41772 | 1998-12-22 00:00:00-05:00 | 2026-08-27 00:00:00-04:00 |      0.00 | yfinance |
 | XLY      |       41772 | 1998-12-22 00:00:00-05:00 | 2026-08-27 00:00:00-04:00 |      0.00 | yfinance |
+
+## v0 reliability test 
+
+Full test in `notebooks/v0_acceptance_test.ipynb`.
+
+1. **SPY compound annual growth rate (2000–2025): 8.03%** - passed
+2. **yfinance and Stooq, daily return correlation (SPY, TLT, GLD):**
+
+   | Ticker | Overlap days | Correlation | Mean abs. return diff |
+   |---|---|---|---|
+   | SPY | 5,409 | 0.998595 | 1.36e-04 |
+   | TLT | 5,409 | 0.997766 | 1.77e-04 |
+   | GLD | 5,409 | 0.999991 | 3.52e-06 |
+
+   GLD above `>0.999` correlation 
+   SPY and TLT not (0.9986, 0.9978)
+   I checked and the differences were mostly on few single days, where the difference was 1-2% on the day returns. 
+3. **Gap check (using a real NYSE calendar): 0 missing days** 
+   For each ticker, compared every date I have data for with `pandas_market_calendars` NYSE calendar. No ticker has a missing day
+
+Hence overall a pass.
