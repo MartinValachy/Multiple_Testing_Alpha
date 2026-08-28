@@ -35,3 +35,4 @@ def vol_target_weight(prices: pd.Series, signal: pd.Series, vol_window: int, tar
 def turnover(weights: pd.Series):
     #returns the absolute difference in weights
     return weights.diff().abs()
+
