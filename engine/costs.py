@@ -33,12 +33,12 @@ def compute_alpha(beta: pd.Series, gamma: pd.Series) -> pd.Series:
 def alpha_to_spread(alpha: pd.Series) -> pd.Series:
     #S = 2*(e^alpha - 1) / (1 + e^alpha)
     S = 2*(np.exp(alpha)-1)/(1+np.exp(alpha))
-    return S.clip(lower=0)
+    return S.clip(lower=0)# type: ignore
 
 def corwin_schultz_spread(high: pd.Series, low: pd.Series) -> pd.Series:
     beta = compute_beta(high, low)
     gamma = compute_gamma(high, low)
-    alpha = compute_alpha(beta, gamma)
+    alpha = compute_alpha(beta, gamma)# type: ignore
     Spread = alpha_to_spread(alpha)
     return Spread
 
