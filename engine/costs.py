@@ -1,4 +1,4 @@
-# v1.2 literature-parameterized cost model
+# v1.2 literature parameterized Corwin Shutz cost model and hihg-liquidity ticker bip spread ceiling
 #
 # IMPORTANT cost estimate is from literatur, not empirical, treat the magnitued as more like directions
 #
@@ -8,7 +8,7 @@
 import numpy as np
 import pandas as pd
 
-# constant from the Corwin-Schultz paper, 3 - 2*sqrt(2)
+# constant from the Corwin-Schultz paper: 3 - 2*sqrt(2)
 CS_CONSTANT = 3 - 2 * np.sqrt(2)
 
 
@@ -50,3 +50,59 @@ def amihud_illiquidity(prices: pd.Series, dollar_volume: pd.Series, window: int)
     ratio = daily_returns.abs() / dollar_volume
     #return the mean in the window given
     return ratio.rolling(window).mean()
+
+#But almost all high liquidity tickers have really tight spreads, therefore we need to categorize these and put a ceiling on the spreads
+
+#Corwin Schutz  just reads high-low ranges and it overestimates spreads badly for high liquidity tickers
+# These "settings" are not calibrated to reach certain results, its known and  published typical spread levels for ETFs this big 
+
+
+# bps ceiling per tier, general typical spread levels for big ETFs
+SPREAD_CEILING_BPS = {
+    "ultra_liquid": 1.5,   # SPY/QQQ/GLD types, trades always
+    "liquid": 4,           # big bond ETFs,... still trade a lot
+    "less_liquid": 12,     # smaller intl/commodity/FX/real estate, trades less
+}
+
+# I will assign the tier automatically based on liquidity tresholds. (Close * volume)
+# 
+#   > 1B/day    -> ultra_liquid  
+#   > 100M/day  -> liquid        
+#   below that  -> less_liquid   
+
+ULTRA_LIQUID_MIN_DOLLAR_VOLUME = 1_000_000_000
+LIQUID_MIN_DOLLAR_VOLUME = 100_000_000
+
+
+RECENT_LIQUIDITY_WINDOW_DAYS = 200  # ~1 trading year
+
+
+def average_dollar_volume(prices: pd.Series, volume: pd.Series) -> float:
+    # dollar volume per day = price * volume
+    dollar_volume = prices * volume
+    # only the last ca. 200 trading days
+    recent = dollar_volume.iloc[-RECENT_LIQUIDITY_WINDOW_DAYS:]
+    return recent.mean()
+
+#assign liquidity tiers
+
+def liquidity_tier(avg_dollar_volume: float) -> str:
+    if avg_dollar_volume >= ULTRA_LIQUID_MIN_DOLLAR_VOLUME:
+        return "ultra_liquid"
+    elif avg_dollar_volume >= LIQUID_MIN_DOLLAR_VOLUME:
+        return "liquid"
+    else:
+        return "less_liquid"
+
+#assing bps and give cost % estimate
+def spread_ceiling(avg_dollar_volume: float) -> float:
+    tier = liquidity_tier(avg_dollar_volume)
+    bps = SPREAD_CEILING_BPS[tier]
+    # bps to decimal,for example 2 bps -> 0.0002
+    return bps / 10000
+
+
+def apply_liquidity_ceiling(spread: pd.Series, avg_dollar_volume: float) -> pd.Series:
+    # caps the spread at the ceiling, but keeps the corwin shutz for classic day-to-day trading
+    ceiling = spread_ceiling(avg_dollar_volume)
+    return spread.clip(upper=ceiling)
