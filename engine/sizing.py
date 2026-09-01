@@ -31,6 +31,13 @@ def vol_target_weight(prices: pd.Series, signal: pd.Series, vol_window: int, tar
     return weight
 
 
+def equal_weight(signal: pd.Series, target_vol: float) -> pd.Series:
+    # v2.3, the grid's other sizing rule: same bet size regardless of how volatile the asset is (unlike vol_target_weight, no division by realized vol). 
+    # direction/strength still comes from the signal's sign and magnitude, just not risk normalized against the asset's vol. 
+    # target_vol reused here as the flat size, jsut so that equal_weight and vol_targeted configs are in similar magnitude range for given target vol
+    return signal * target_vol
+
+
 
 def turnover(weights: pd.Series):
     #returns the absolute difference in weights

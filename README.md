@@ -58,3 +58,26 @@ The spread itself (0.06 to 0.43 across "reasonable" 8-ticker choices) is simply 
 No hand picked basket reliably reproduces the literature's 1.0+ Sharpe, which comes from 58 genuinely independent instruments, not 8 like I did).
 
 Portfolio (equal-weighted, gross): Sharpe 0.43, positive.
+
+## v2: the Zoo
+
+`zoo/grid.py` enumerates the strategy grid BEFORE any backtest runs. 
+780 configs: 4 signal families (tsmom, cross-sectional momentum, short-term reversal, vol-of-vol) x lookback x skip-month variant x 5 holding periods x 3 universe subsets x 2 sizing rules. 
+Committed at `01e84db` before `run_grid.py` was ever run the proof for v3
+
+Engine needed 5 new things before it could actually run the grid, all added to `engine/`:
+
+- `apply_backtest` split out of `run_backtest` (weight -> turnover -> cost -> pnl, family-agnostic) so reversal/vol-of-vol/cross-sectional could reuse it without rewriting the shift/no-lookahead logic
+- reversal: just flips the signal's sign before calling `apply_backtest`
+- vol-of-vol: feeds `apply_backtest` a signal built from a realized vol series instead of price
+- `run_cross_sectional_backtest`: ranks a whole universe against itself each day (`signals.py`'s `cross_sectional_signal`, shifts the 0 to 1 rank to roughly -1 to +1), then runs each ticker's resulting signal through `apply_backtest`, same as everything else
+- `apply_holding_period`: freezes the weight for N days between rebalances instead of recomputing daily
+- `equal_weight` sizing in `sizing.py`: flat bet size, no vol normalization (the grid's other sizing rule alongside vol targeted)
+
+`zoo/run_grid.py` runs all 780, gets one portfolio level Sharpe per config 
+Results: `results/zoo_raw_stats.parquet`, histogram in `results/zoo_sharpe_histogram.png`.
+
+Gross Sharpe across all 780: mean 0.20, std 0.19, max 0.67 (min -0.46).
+
+## v3 prediction: nothing will survive, the number of configs (780) and the mean (and max) is too low for the strategies to survive the adjustment
+But I have to do it properly, so thats for v3...

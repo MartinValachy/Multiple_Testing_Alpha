@@ -5,16 +5,26 @@
 import pandas as pd
 
 from signals import return_over_lookback, cross_sectional_signal
-from sizing import vol_target_weight, turnover
+from sizing import vol_target_weight, equal_weight, turnover, apply_holding_period
 from costs import corwin_schultz_spread, average_dollar_volume, apply_liquidity_ceiling
 
-# v2.0 split: apply_backtest is the family adjusted function (weight -> turnover -> cost -> pnl). 
+# v2.0 split: apply_backtest is the family adjusted function (weight -> turnover -> cost -> pnl).
 # It takes a signal already built by whichever family constructed it
 
 # volume is needed to see how liquid the ticker is, the liquidity is used to bound the corwin-schultz cost estimate
-def apply_backtest(signal: pd.Series, prices: pd.Series, high: pd.Series, low: pd.Series, volume: pd.Series, vol_window: int, target_vol: float) -> pd.DataFrame:
+# holding_period_days=1 (daily) and sizing_rule="vol_targeted" are the defaults —
+# matches everything already tested, no behavior change unless a caller asks for something else
+def apply_backtest(signal: pd.Series, prices: pd.Series, high: pd.Series, low: pd.Series, volume: pd.Series, vol_window: int, target_vol: float, holding_period_days: int = 1, sizing_rule: str = "vol_targeted") -> pd.DataFrame:
    #shifted to avoid look ahead bias
-   weights = vol_target_weight(prices.shift(1), signal.shift(1), vol_window, target_vol)
+   # split based on sizing rule: either vol targeted or equal weight.
+   if sizing_rule == "vol_targeted":
+      weights = vol_target_weight(prices.shift(1), signal.shift(1), vol_window, target_vol)
+   elif sizing_rule == "equal_weight":
+      weights = equal_weight(signal.shift(1), target_vol)
+   else:
+      raise ValueError(f"unknown sizing_rule: {sizing_rule}")
+   # v2.2: freeze the weight between rebalance dates instead of letting it drift daily
+   weights = apply_holding_period(weights, holding_period_days)
    # calc turnover for cost estimates
    turn_over = turnover(weights)
 
@@ -40,12 +50,12 @@ def apply_backtest(signal: pd.Series, prices: pd.Series, high: pd.Series, low: p
 
 
 #signal_lag_days allows for ignoring N days when looking at returns, volatility ... Default is 0 so nothing basically changes
-# this is the tsmom-specific signal construction, kept as its own function (same name as before the split, so nothing else breaks) —
+# this is the tsmom specific signal construction, kept as its own function (same name as before the split, so nothing else breaks) —
 # it just delegates the weight/turnover/cost/pnl part to apply_backtest now
-def run_backtest(prices: pd.Series, high: pd.Series, low: pd.Series, volume: pd.Series, lookback_days: int, vol_window: int, target_vol: float, signal_lag_days: int = 0) -> pd.DataFrame:
+def run_backtest(prices: pd.Series, high: pd.Series, low: pd.Series, volume: pd.Series, lookback_days: int, vol_window: int, target_vol: float, signal_lag_days: int = 0, holding_period_days: int = 1, sizing_rule: str = "vol_targeted") -> pd.DataFrame:
    #load signal
    signal = return_over_lookback(prices.shift(signal_lag_days), lookback_days)
-   return apply_backtest(signal, prices, high, low, volume, vol_window, target_vol)
+   return apply_backtest(signal, prices, high, low, volume, vol_window, target_vol, holding_period_days, sizing_rule)
 
 
 # v2.1: cross-sectional momentum across a whole universe at once, not one ticker at a time. 
@@ -53,7 +63,7 @@ def run_backtest(prices: pd.Series, high: pd.Series, low: pd.Series, volume: pd.
 # Returns a dict of apply_backtest-style DFs, one per ticker
 # basically same output shape as run_backtest's output, just built from a cross-sectional signal
 
-def run_cross_sectional_backtest(prices_by_ticker: dict, highs_by_ticker: dict, lows_by_ticker: dict, volumes_by_ticker: dict, lookback_days: int, vol_window: int, target_vol: float, signal_lag_days: int = 0) -> dict:
+def run_cross_sectional_backtest(prices_by_ticker: dict, highs_by_ticker: dict, lows_by_ticker: dict, volumes_by_ticker: dict, lookback_days: int, vol_window: int, target_vol: float, signal_lag_days: int = 0, holding_period_days: int = 1, sizing_rule: str = "vol_targeted") -> dict:
    # build the wide raw momentum panel, one column per ticker
    raw_signals = {}
    for ticker, prices in prices_by_ticker.items():
@@ -75,5 +85,7 @@ def run_cross_sectional_backtest(prices_by_ticker: dict, highs_by_ticker: dict, 
           volumes_by_ticker[ticker],
           vol_window,
           target_vol,
+          holding_period_days,
+          sizing_rule,
       )
    return results
