@@ -40,9 +40,8 @@ def apply_backtest(signal: pd.Series, prices: pd.Series, high: pd.Series, low: p
 
 
 #signal_lag_days allows for ignoring N days when looking at returns, volatility ... Default is 0 so nothing basically changes
-# this is the tsmom-specific signal construction, kept as its own function
-# (same name/signature as before the split, so nothing else breaks) —
-# just delegates the weight/turnover/cost/pnl part to apply_backtest now
+# this is the tsmom-specific signal construction, kept as its own function (same name as before the split, so nothing else breaks) —
+# it just delegates the weight/turnover/cost/pnl part to apply_backtest now
 def run_backtest(prices: pd.Series, high: pd.Series, low: pd.Series, volume: pd.Series, lookback_days: int, vol_window: int, target_vol: float, signal_lag_days: int = 0) -> pd.DataFrame:
    #load signal
    signal = return_over_lookback(prices.shift(signal_lag_days), lookback_days)

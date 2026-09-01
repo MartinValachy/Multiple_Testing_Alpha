@@ -26,3 +26,9 @@ def cross_sectional_rank(signal_by_ticker: pd.DataFrame):
     #rank all the tickers against each other, ascending
     df_ranked = signal_by_ticker.rank(axis=1, pct=True)
     return df_ranked
+
+
+def cross_sectional_signal(signal_by_ticker: pd.DataFrame) -> pd.DataFrame:
+    rank = cross_sectional_rank(signal_by_ticker)
+    rank_adj = (rank- 0.5)*2
+    return rank_adj
