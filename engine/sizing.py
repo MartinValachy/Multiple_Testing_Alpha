@@ -36,3 +36,13 @@ def turnover(weights: pd.Series):
     #returns the absolute difference in weights
     return weights.diff().abs()
 
+
+def apply_holding_period(weights: pd.Series, holding_period_days: int) -> pd.Series:
+    #make an all false mask
+    mask = pd.Series(False, index=weights.index)
+    #flip every n'th position to true, depending on holdin_period_days
+    mask.iloc[::holding_period_days] = True
+    # keep weights' values only where mask == true, and fill the others with NaN
+    weights = weights.where(mask)
+    weights = weights.ffill()
+    return weights

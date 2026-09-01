@@ -4,7 +4,7 @@
 
 import pandas as pd
 
-from signals import return_over_lookback
+from signals import return_over_lookback, cross_sectional_signal
 from sizing import vol_target_weight, turnover
 from costs import corwin_schultz_spread, average_dollar_volume, apply_liquidity_ceiling
 
@@ -46,3 +46,34 @@ def run_backtest(prices: pd.Series, high: pd.Series, low: pd.Series, volume: pd.
    #load signal
    signal = return_over_lookback(prices.shift(signal_lag_days), lookback_days)
    return apply_backtest(signal, prices, high, low, volume, vol_window, target_vol)
+
+
+# v2.1: cross-sectional momentum across a whole universe at once, not one ticker at a time. 
+# prices_by_ticker/highs_by_ticker/etc are dicts keyed by ticker (same key in each dict)
+# Returns a dict of apply_backtest-style DFs, one per ticker
+# basically same output shape as run_backtest's output, just built from a cross-sectional signal
+
+def run_cross_sectional_backtest(prices_by_ticker: dict, highs_by_ticker: dict, lows_by_ticker: dict, volumes_by_ticker: dict, lookback_days: int, vol_window: int, target_vol: float, signal_lag_days: int = 0) -> dict:
+   # build the wide raw momentum panel, one column per ticker
+   raw_signals = {}
+   for ticker, prices in prices_by_ticker.items():
+      raw_signals[ticker] = return_over_lookback(prices.shift(signal_lag_days), lookback_days)
+   raw_signal_df = pd.DataFrame(raw_signals)
+
+   # rank tickers against each other each day, centered to cca [-1, 1]
+   cs_signal_df = cross_sectional_signal(raw_signal_df)
+
+   # each ticker's cross sectional signal goes through the exact same weight/turnover/cost/pnl engine as tsmom/reversal/vol-of-vol
+   results = {}
+   for ticker in prices_by_ticker:
+      signal = cs_signal_df[ticker]
+      results[ticker] = apply_backtest(
+          signal,
+          prices_by_ticker[ticker],
+          highs_by_ticker[ticker],
+          lows_by_ticker[ticker],
+          volumes_by_ticker[ticker],
+          vol_window,
+          target_vol,
+      )
+   return results
