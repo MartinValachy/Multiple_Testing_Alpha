@@ -8,12 +8,11 @@ from signals import return_over_lookback, cross_sectional_signal
 from sizing import vol_target_weight, equal_weight, turnover, apply_holding_period
 from costs import corwin_schultz_spread, average_dollar_volume, apply_liquidity_ceiling
 
-# v2.0 split: apply_backtest is the family adjusted function (weight -> turnover -> cost -> pnl).
-# It takes a signal already built by whichever family constructed it
+# v2.0 split: apply_backtest does the family agnostic part (weight -> turnover -> cost -> pnl).
+# It takes a signal thats already built by whichever family built it
 
 # volume is needed to see how liquid the ticker is, the liquidity is used to bound the corwin-schultz cost estimate
-# holding_period_days=1 (daily) and sizing_rule="vol_targeted" are the defaults —
-# matches everything already tested, no behavior change unless a caller asks for something else
+# defaults are holding_period_days=1 and sizing_rule="vol_targeted", so nothing changes for what i already tested unless the caller asks for something else
 def apply_backtest(signal: pd.Series, prices: pd.Series, high: pd.Series, low: pd.Series, volume: pd.Series, vol_window: int, target_vol: float, holding_period_days: int = 1, sizing_rule: str = "vol_targeted") -> pd.DataFrame:
    #shifted to avoid look ahead bias
    # split based on sizing rule: either vol targeted or equal weight.
@@ -50,8 +49,8 @@ def apply_backtest(signal: pd.Series, prices: pd.Series, high: pd.Series, low: p
 
 
 #signal_lag_days allows for ignoring N days when looking at returns, volatility ... Default is 0 so nothing basically changes
-# this is the tsmom specific signal construction, kept as its own function (same name as before the split, so nothing else breaks) —
-# it just delegates the weight/turnover/cost/pnl part to apply_backtest now
+# tsmom specific signal construction, kept under the same name as before the split so nothing else breaks.
+# the weight/turnover/cost/pnl part just gets handed to apply_backtest now
 def run_backtest(prices: pd.Series, high: pd.Series, low: pd.Series, volume: pd.Series, lookback_days: int, vol_window: int, target_vol: float, signal_lag_days: int = 0, holding_period_days: int = 1, sizing_rule: str = "vol_targeted") -> pd.DataFrame:
    #load signal
    signal = return_over_lookback(prices.shift(signal_lag_days), lookback_days)

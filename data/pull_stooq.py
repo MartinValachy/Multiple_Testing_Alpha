@@ -31,7 +31,7 @@ def to_long_format(ticker: str, wide_df: pd.DataFrame):
 
 
 def build_panel(tickers: list) -> pd.DataFrame:
-    # flat list now, no buckets — only 3 tickers, just for the cross-check
+    # flat list now, no buckets, only 3 tickers just for the cross-check
     frames = []
     for ticker in tickers:
         wide_df = fetch_one(ticker)

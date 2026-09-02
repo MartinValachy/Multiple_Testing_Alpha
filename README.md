@@ -1,83 +1,106 @@
-# Z1 The strategy comparison
+# Z1: the strategy zoo
 
-Goal: Compare hundreds of multi asset strategies, correct for how many were tried, find out whats actually left.
+Enumerate a ca 800 multi-asset strategies, write the list down before running anything, then find out how many are still alive once you correct for the fact that you tried all of them.
 
-## v0: Data layer
+Short answer: none of them.
 
-44 ETFs, 6 asset class buckets (equity, sectors, fixed income, commodities, real estate, FX) pulled daily OHLCV + Adj Close from yfinance. (OHLCV = open high low close volume)
+Data is 44 ETFs across 6 buckets (equity, sectors, fixed income, commodities, real estate, FX), daily OHLCV (open high low close volume) from yfinance, longest available history per ticker.
 
-`data/pull_yfinance.py` pulls all 44 tickers in long format (`date, ticker, field, value`), writes `data/processed/panel_yfinance.parquet` and auto-generates `data/MANIFEST.md`. "manifest" checks how much data is actually pulled so i dont have empty entries
+## How to run
 
-`data/pull_stooq.py` is for verification of reliability of yfinance, pulls data from stooq of SPY, TLT and GLD to compare with yfinacne and find out if its reliable
+```bash
+pip install -r requirements.txt
+python data/pull_yfinance.py     # writes data/processed/panel_yfinance.parquet + MANIFEST.md
+python data/clean.py             # writes data/processed/panel.parquet
+pytest tests/test_engine.py -s   # v1 acceptance test
+python zoo/grid.py               # prints the config count, runs nothing
+python zoo/run_grid.py           # all 780 configs -> results/zoo_raw_stats.parquet
+python stats/run_v3.py           # DSR + HLZ + Reality Check
+```
 
-`data/clean.py` takes the raw yfinance pull, checks for duplicate `(date, ticker, field)` rows, checks every ticker against the real NYSE trading calendar, and writes the actual cleaned dataframe: `data/processed/panel.parquet`
+## v0: data layer
 
-## Acceptance test of data (`notebooks/v0_Reliability_Test.ipynb`)
+`data/pull_yfinance.py` pulls all 44 tickers in long format (`date, ticker, field, value`) and auto-generates `data/MANIFEST.md`. The manifest is there so I can see how much data actually came back per ticker instead of trusting the pull silently.
 
-1. SPY CAGR 2000-2025: 8.03%, matches the well-known 7-8% figure. Pass. (CAGR = cumulative annual growth rate)
-2. yfinance vs Stooq daily return correlation, 
-SPY/TLT/GLD: GLD 0.999991 (clean pass), SPY 0.998595, TLT 0.997766, pass.
-3. Day gaps checked against a real NYSE calendar, all 44 tickers had 0 missing days each. Pass.
+`data/pull_stooq.py` pulls SPY, TLT and GLD from a second source, only to check whether yfinance is reliable enough to build on.
 
-Full numbers in `data/MANIFEST.md`.
+`data/clean.py` takes the raw pull, checks for duplicate `(date, ticker, field)` rows, checks every ticker against a real NYSE trading calendar, and writes a clean `data/processed/panel.parquet`.
 
-`clean.py` run confirms no duplicates nor calendar gaps for all tickers
+**Acceptance test** (`notebooks/v0_Reliability_Test.ipynb`):
 
-## v1: backtest engine 
+1. SPY CAGR 2000-2025 is 8.03%, which matches the well known 7-8% figure. Pass. (CAGR = Cumulative Annualized Gross Returns)
+2. yfinance vs Stooq daily return correlation: GLD 0.999991, SPY 0.998595, TLT 0.997766. Pass.
+3. Day gaps against a real NYSE calendar: all 44 tickers, 0 missing days each. Pass.
 
-`engine/signals.py`: 3 primitive signals: 
-return over lookback 
-vol-scaled return
-cross-sectional rank
+## v1: backtest engine
 
-`engine/sizing.py` : vol targeting (weight = signal * target_vol/realized_vol) and turnover calculation
+`engine/signals.py`: return over lookback, vol-scaled return, cross-sectional rank.
 
-`engine/costs.py` : Corwin-Schultz spread estimate from daily high/low, "Amihud illiquidity" as a cross-check. Literature-parameterized, not calibrated. Every result using this carries that caveat.
+`engine/sizing.py`: vol targeting (`weight = signal * target_vol / realized_vol`), equal weight, turnover, holding period.
 
-Corwin-Schultz alone overestimates spreads badly for liquid names. For example SPY came out around 27bps, real SPY spread is under 1bp. 
-Fixed it with a liquidity ceiling. Each ticker's average dollar volume (`Close * Volume`, already have it) sorts it into a tier (>=$1B/day, >=$100M/day, below that), each tier has a published typical spread ceiling (1.5/4/12bps), Corwin-Schultz gets capped there. 
-It keeps the day-to-day shape from Corwin-Schultz, but fixes the absolute level.
+`engine/costs.py`: Corwin-Schultz spread from daily high/low, Amihud illiquidity as a cross-check. 
+    **Literature-parameterized, not calibrated to real spread data.** Every number in this repo that takes into account costs has to be taken with discretion because of this
 
-`engine/backtest.py` : runs signal -> weight -> turnover -> cost -> daily pnl. 
+Corwin-Schultz overestimates spreads badly for liquid tickers. SPY came out at roughly 27bps when the real spread is under 1bp. 
+I fixed it with a liquidity ceiling: each ticker's average dollar volume sorts it into a tier (>=$1B/day, >=$100M/day, below), each tier has a published typical spread ceiling (1.5 / 4 / 12 bps), and Corwin-Schultz gets capped there. 
+It keeps the day-to-day shape and fixes the absolute level.
 
-Design note: 
-Weight here is `signal * vol_scalar`, using the raw momentum magnitude, not `sign(signal) * vol_scalar` like the classic academic construction. Different Sharpe than a pure sign-based bet.
+`engine/backtest.py`: signal -> weight -> turnover -> cost -> daily pnl.
 
-## v1 acceptance test (`tests/test_engine.py`)
+Design note: weight is `signal * vol_scalar`, so the raw momentum magnitude, not `sign(signal) * vol_scalar` like the classic academic construction. That gives a different Sharpe than a pure sign based bet.
 
-12-1 month momentum (skip most recent month). Im checking gross returns, not net.
+**Acceptance test** (`tests/test_engine.py`): 12-1 month momentum, one ticker per bucket (SPY, EEM, TLT, HYG, GLD, DBC, VNQ, UUP), gross returns. Equal-weighted portfolio Sharpe 0.43, positive.
 
-Tickers: SPY, EEM, TLT, HYG, GLD, DBC, VNQ, UUP, one per asset class bucket
+The difference from literature 1.0+ sharpe is that the literature used 50+ uncorrelated tickers and i used only 8
 
-I tried two other selections as well:
-- original equity heavy set (SPY/QQQ/IWM-tilted): gross Sharpe 0.38
-- correlation optimized set (lowest cross-bucket correlation per bucket, picked before looking at any momentum result): gross Sharpe 0.06
+## v2: the zoo
 
-This basket lands at 0.43, and is the most defensible.
-The spread itself (0.06 to 0.43 across "reasonable" 8-ticker choices) is simply more honest.
-No hand picked basket reliably reproduces the literature's 1.0+ Sharpe, which comes from 58 genuinely independent instruments, not 8 like I did).
+`zoo/grid.py` enumerates the grid before any backtest runs. 780 configs: 4 signal families (tsmom, cross-sectional momentum, short-term reversal, vol-of-vol) x lookback x skip-month variant x 5 holding periods x 3 universe subsets x 2 sizing rules.
 
-Portfolio (equal-weighted, gross): Sharpe 0.43, positive.
+**Committed at `01e84db`, before `run_grid.py` was ever executed.** That commit is the pre-registration proof cited in v3. More trials would raise the bar in the v3 correction, not lower it, so there was no incentive to pad the count.
 
-## v2: the Zoo
+The engine needed 5 additions before it could run the grid: 
+`apply_backtest` split out of `run_backtest` so every family reuses the same shift/cost/pnl path, reversal (flips the signal)
+vol-of-vol (signal built from a realized vol series)
+`run_cross_sectional_backtest` (ranks the universe against itself daily)
+`apply_holding_period` (freezes weights between rebalances)
+`equal_weight` sizing
 
-`zoo/grid.py` enumerates the strategy grid BEFORE any backtest runs. 
-780 configs: 4 signal families (tsmom, cross-sectional momentum, short-term reversal, vol-of-vol) x lookback x skip-month variant x 5 holding periods x 3 universe subsets x 2 sizing rules. 
-Committed at `01e84db` before `run_grid.py` was ever run the proof for v3
+`zoo/run_grid.py` runs all 780 and writes `results/zoo_raw_stats.parquet` plus a histogram
 
-Engine needed 5 new things before it could actually run the grid, all added to `engine/`:
+Gross Sharpe across all 780: mean 0.20, std 0.19, max 0.67, min -0.46.
 
-- `apply_backtest` split out of `run_backtest` (weight -> turnover -> cost -> pnl, family-agnostic) so reversal/vol-of-vol/cross-sectional could reuse it without rewriting the shift/no-lookahead logic
-- reversal: just flips the signal's sign before calling `apply_backtest`
-- vol-of-vol: feeds `apply_backtest` a signal built from a realized vol series instead of price
-- `run_cross_sectional_backtest`: ranks a whole universe against itself each day (`signals.py`'s `cross_sectional_signal`, shifts the 0 to 1 rank to roughly -1 to +1), then runs each ticker's resulting signal through `apply_backtest`, same as everything else
-- `apply_holding_period`: freezes the weight for N days between rebalances instead of recomputing daily
-- `equal_weight` sizing in `sizing.py`: flat bet size, no vol normalization (the grid's other sizing rule alongside vol targeted)
+## v3: false discovery control
 
-`zoo/run_grid.py` runs all 780, gets one portfolio level Sharpe per config 
-Results: `results/zoo_raw_stats.parquet`, histogram in `results/zoo_sharpe_histogram.png`.
+I predicted before running this that nothing would survive, because a max of 0.67 out of 780 tries isnt really a big number. It didn't survive.
 
-Gross Sharpe across all 780: mean 0.20, std 0.19, max 0.67 (min -0.46).
+`stats/dsr.py`: Deflated Sharpe Ratio (Bailey & Lopez de Prado 2014). The expected maximum Sharpe across N trials grows with N even when no strategy has real skill, so the best observed Sharpe gets judged against that inflated benchmark instead of against zero. The PSR step also corrects for the winner's own skew and kurtosis.
 
-## v3 prediction: nothing will survive, the number of configs (780) and the mean (and max) is too low for the strategies to survive the adjustment
-But I have to do it properly, so thats for v3...
+`stats/hlz_haircut.py`: Harvey-Liu-Zhu (2016) haircuts. Bonferroni, Holm, and Benjamini-Hochberg-Yekutieli. BHY is the one that matters here, since it stays valid under arbitrary dependence and these 780 trials are heavily correlated with each other.
+
+`stats/reality_check.py`: White's Reality Check through a stationary bootstrap (Politis & Romano 1994). Random-length blocks, and the same resampled date sequence applied to every trial at once, so both the autocorrelation in daily returns and the cross-trial correlation survive the resampling.
+
+**Result.** Best config was 445 (cross-sectional momentum, 252d lookback, semiannual holding, all 44 tickers, vol targeted) at 0.67 annualized gross Sharpe.
+
+| Test | Result |
+|---|---|
+| Deflated Sharpe Ratio | 0.639 |
+| Uncorrected survivors at 5% | 213 of 780 |
+| Bonferroni | 0 |
+| Holm | 0 |
+| Benjamini-Hochberg-Yekutieli | 0 |
+| Reality Check p-value | 0.190 |
+
+213 of 780 configs look significant if you ignore the fact that you ran 780 of them. 
+Zero survive once you don't. 
+
+The DSR of 0.639 is well under the 0.95 you would want, and the Reality Check p-value of 0.190 says the best-of-780 result is consistent with luck.
+
+Full write-up in `report/v3_false_discovery.md`.
+
+## Conclusion about this project
+
+It's an audit trail showing that a plausible looking 0.67 Sharpe, found across 780 tries on 44 ETFs, is what multiple testing produces on its own. 
+The pre-registration commit is what makes that claim checkable rather than something I just assert.
+
+Costs everywhere are literature-parameterized, not calibrated. Treat the magnitudes as directional.
