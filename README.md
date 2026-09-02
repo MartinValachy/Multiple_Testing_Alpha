@@ -6,6 +6,8 @@ Short answer: none of them.
 
 Data is 44 ETFs across 6 buckets (equity, sectors, fixed income, commodities, real estate, FX), daily OHLCV (open high low close volume) from yfinance, longest available history per ticker.
 
+Short paper version (2 pages, with the method and the references): [`report/Z1_v3_paper.pdf`](report/Z1_v3_paper.pdf)
+
 ## How to run
 
 ```bash
@@ -100,6 +102,8 @@ Zero survive once you don't.
 The DSR of 0.639 is well under the 0.95 you would want, and the Reality Check p-value of 0.190 says the best-of-780 result is consistent with luck.
 
 Full write-up in `report/v3_false_discovery.md`.
+
+Short paper version (2 pages, with the method and the references): [`report/Z1_v3_paper.pdf`](report/Z1_v3_paper.pdf)
 
 ## Conclusion about this project
 
