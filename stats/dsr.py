@@ -1,7 +1,7 @@
 # v3: Deflated Sharpe Ratio (Bailey & Lopez de Prado 2014)
 #
 # idea: 
-# the expected MAXIMUM sharpe across N trials grows with N even under without skill, 
+# the expected MAXIMUM sharpe across N trials grows with N even without skill, 
 # so the observed best sharpe has to be judged against that inflated benchmark, not against zero
 # then the probabilistic sharpe ratio (PSR) tests the best trial against that benchmark, 
 # correcting for its own skew/kurtosis too, since momentum strategies are non-normal.
@@ -37,7 +37,7 @@ def deflated_sharpe_ratio(trial_daily_sharpes: pd.Series, winning_trial_daily_re
     sr_star = expected_max_sharpe_null(sr_0, n_trials)
     # max sharpe in trials = sr_hat
     sr_hat = trial_daily_sharpes.max()
-    #take only strategies with positive returns and drop emtpy fields
+    # just drop the NaN days from the winning trial's own return series
     returns = winning_trial_daily_returns.dropna()
     n_obs = len(returns)
     #now calc the skew and kurtosis

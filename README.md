@@ -16,6 +16,7 @@ pytest tests/test_engine.py -s   # v1 acceptance test
 python zoo/grid.py               # prints the config count, runs nothing
 python zoo/run_grid.py           # all 780 configs -> results/zoo_raw_stats.parquet
 python stats/run_v3.py           # DSR + HLZ + Reality Check
+python stats/plot_v3.py          # -> results/v3_sharpe_vs_null.png
 ```
 
 ## v0: data layer
@@ -93,6 +94,8 @@ I predicted before running this that nothing would survive, because a max of 0.6
 
 213 of 780 configs look significant if you ignore the fact that you ran 780 of them. 
 Zero survive once you don't. 
+
+`stats/plot_v3.py` draws the one figure that shows this (`results/v3_sharpe_vs_null.png`): if no config in the grid had any skill at all, the best of 780 tries would still be expected to land at 0.61 annualized. I got 0.67, the entire edge of the winning config is 0.06 Sharpe over what 780 coinflips hand you for free.
 
 The DSR of 0.639 is well under the 0.95 you would want, and the Reality Check p-value of 0.190 says the best-of-780 result is consistent with luck.
 

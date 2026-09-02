@@ -88,5 +88,10 @@ def test_portfolio_12_1_momentum_positive_gross_sharpe(backtest_results):
     # calc the mean return and sharpe
     mean_return = portfolio.mean()
     sharpe = annualized_sharpe(portfolio)
-
+    
     print(f"PORTFOLIO (equal-weighted, gross): avg daily pnl={mean_return:.6f}, "f"annualized Sharpe={sharpe:.2f}")
+
+    # the actual check, 12-1 momentum has to come out positive, thats the documented result im reproducing
+    # without these asserts the test just prints and passes no matter what the engine does
+    assert not np.isnan(sharpe), "sharpe came out NaN, something is broken upstream"
+    assert sharpe > 0, f"12-1 momentum gross sharpe should be positive, got {sharpe:.2f}"
